@@ -1,0 +1,4 @@
+validity-data/
+*.log
+installer/target/
+.work/

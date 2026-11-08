@@ -1,0 +1,12 @@
+[package]
+name = "t480-setup"
+version = "0.1.0"
+edition = "2024"
+license = "LGPL-2.1-or-later"
+description = "Set up the Validity/Synaptics 06cb:009a fingerprint reader on Debian"
+
+[dependencies]
+
+[profile.release]
+opt-level = 2
+strip = true
