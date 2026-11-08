@@ -1,0 +1,754 @@
+diff --git a/libfprint/drivers/validity/validity.c b/libfprint/drivers/validity/validity.c
+index 4f71db62..30e7b1e2 100644
+--- a/libfprint/drivers/validity/validity.c
++++ b/libfprint/drivers/validity/validity.c
+@@ -586,7 +586,7 @@ open_load_data (FpiSsm            *ssm,
+    * the emulated device uses in-memory store, not real blobs */
+   if (g_strcmp0 (g_getenv ("FP_DEVICE_EMULATION"), "1") == 0)
+     {
+-      fp_dbg ("Emulation mode — skipping data file loading");
++      fp_dbg ("Emulation mode, skipping data file loading");
+       fpi_ssm_next_state (ssm);
+       return;
+     }
+@@ -647,7 +647,7 @@ open_send_init_hardcoded (FpiSsm            *ssm,
+   /* In emulation mode, skip raw USB blobs */
+   if (g_strcmp0 (g_getenv ("FP_DEVICE_EMULATION"), "1") == 0)
+     {
+-      fp_dbg ("Emulation mode — skipping init_hardcoded");
++      fp_dbg ("Emulation mode, skipping init_hardcoded");
+       fpi_ssm_jump_to_state (ssm, OPEN_UPLOAD_FWEXT);
+       return;
+     }
+@@ -657,7 +657,7 @@ open_send_init_hardcoded (FpiSsm            *ssm,
+ 
+   if (!init_data || init_len == 0)
+     {
+-      fp_warn ("No init_hardcoded data loaded — skipping");
++      fp_warn ("No init_hardcoded data loaded, skipping");
+       fpi_ssm_jump_to_state (ssm, OPEN_UPLOAD_FWEXT);
+       return;
+     }
+@@ -709,7 +709,7 @@ open_send_init_clean_slate (FpiSsm            *ssm,
+ 
+   if (!cs_data || cs_len == 0)
+     {
+-      fp_dbg ("No init_clean_slate data — skipping");
++      fp_dbg ("No init_clean_slate data, skipping");
+       fpi_ssm_next_state (ssm);
+       return;
+     }
+@@ -746,6 +746,12 @@ open_recv_init_clean_slate (FpiSsm            *ssm,
+                            fpi_ssm_usb_transfer_cb, NULL);
+ }
+ 
++gboolean
++validity_flash_writes_allowed (void)
++{
++  return g_strcmp0 (g_getenv ("LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES"), "1") == 0;
++}
++
+ static void
+ open_upload_fwext (FpiSsm            *ssm,
+                    FpiDeviceValidity *self)
+@@ -763,7 +769,7 @@ open_upload_fwext (FpiSsm            *ssm,
+   /* In emulation mode, skip upload — no real device */
+   if (g_strcmp0 (g_getenv ("FP_DEVICE_EMULATION"), "1") == 0)
+     {
+-      fp_dbg ("Emulation mode — skipping fwext upload");
++      fp_dbg ("Emulation mode, skipping fwext upload");
+       fpi_ssm_next_state (ssm);
+       return;
+     }
+@@ -778,6 +784,14 @@ open_upload_fwext (FpiSsm            *ssm,
+       return;
+     }
+ 
++  if (!validity_flash_writes_allowed ())
++    {
++      fp_warn ("Firmware extension not loaded; flash writes disabled "
++               "(set LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES=1 to upload), skipping");
++      fpi_ssm_jump_to_state (ssm, OPEN_SENSOR_IDENTIFY);
++      return;
++    }
++
+   fp_info ("Firmware extension not loaded — starting upload via TLS");
+ 
+   self->open_ssm = ssm;
+@@ -795,7 +809,7 @@ open_pair (FpiSsm            *ssm,
+   /* In emulation mode, skip pairing */
+   if (g_strcmp0 (g_getenv ("FP_DEVICE_EMULATION"), "1") == 0)
+     {
+-      fp_dbg ("Emulation mode — skipping pairing check");
++      fp_dbg ("Emulation mode, skipping pairing check");
+       fpi_ssm_next_state (ssm);
+       return;
+     }
+@@ -821,7 +835,7 @@ open_tls_read_flash (FpiSsm            *ssm,
+   /* In emulation mode (tests), skip TLS — no real device to talk to */
+   if (g_strcmp0 (g_getenv ("FP_DEVICE_EMULATION"), "1") == 0)
+     {
+-      fp_dbg ("Emulation mode — skipping TLS flash read");
++      fp_dbg ("Emulation mode, skipping TLS flash read");
+       fpi_ssm_jump_to_state (ssm, OPEN_DONE);
+       return;
+     }
+@@ -932,7 +946,7 @@ open_sensor_identify (FpiSsm            *ssm,
+    * failed by the check in OPEN_DONE. */
+   if (!self->tls.secure_rx)
+     {
+-      fp_info ("No TLS session — skipping sensor identification");
++      fp_info ("No TLS session, skipping sensor identification");
+       fpi_ssm_jump_to_state (ssm, OPEN_DONE);
+       return;
+     }
+@@ -1043,7 +1057,7 @@ open_sensor_factory_bits (FpiSsm            *ssm,
+    * identified, skip this step. */
+   if (!self->sensor.device_info)
+     {
+-      fp_info ("No sensor info — skipping factory bits");
++      fp_info ("No sensor info, skipping factory bits");
+       fpi_ssm_jump_to_state (ssm, OPEN_DONE);
+       return;
+     }
+@@ -1089,7 +1103,7 @@ open_capture_setup (FpiSsm            *ssm,
+    * sensor.factory_bits from FACTORY_BITS. */
+   if (!self->sensor.type_info || !self->sensor.device_info)
+     {
+-      fp_info ("No sensor type info — skipping capture setup");
++      fp_info ("No sensor type info, skipping capture setup");
+       fpi_ssm_next_state (ssm);
+       return;
+     }
+@@ -1131,7 +1145,7 @@ open_calibrate_build (FpiSsm            *ssm,
+   if (!self->sensor.type_info ||
+       self->capture.bytes_per_line == 0)
+     {
+-      fp_info ("No capture state — skipping calibration");
++      fp_info ("No capture state, skipping calibration");
+       fpi_ssm_jump_to_state (ssm, OPEN_DONE);
+       return;
+     }
+diff --git a/libfprint/drivers/validity/validity.h b/libfprint/drivers/validity/validity.h
+index 98d92182..53b325dd 100644
+--- a/libfprint/drivers/validity/validity.h
++++ b/libfprint/drivers/validity/validity.h
+@@ -187,6 +187,17 @@ typedef enum {
+   ENROLL_NUM_STATES,
+ } ValidityEnrollState;
+ 
++/* Cleanup run when an enrollment is cancelled while capturing */
++typedef enum {
++  ENROLL_ABORT_STOP = 0,
++  ENROLL_ABORT_STOP_RECV,
++  ENROLL_ABORT_END,
++  ENROLL_ABORT_END_RECV,
++  ENROLL_ABORT_LED_OFF,
++  ENROLL_ABORT_LED_OFF_RECV,
++  ENROLL_ABORT_NUM_STATES,
++} ValidityEnrollAbortState;
++
+ /* Verify/Identify SSM states */
+ typedef enum {
+   VERIFY_LED_ON = 0,
+@@ -215,6 +226,17 @@ typedef enum {
+   VERIFY_NUM_STATES,
+ } ValidityVerifyState;
+ 
++/* Cleanup run when a verify/identify is cancelled while waiting for the finger */
++typedef enum {
++  VERIFY_ABORT_STOP = 0,
++  VERIFY_ABORT_STOP_RECV,
++  VERIFY_ABORT_MATCH_CLEANUP,   /* end a match session the sensor already started */
++  VERIFY_ABORT_MATCH_CLEANUP_RECV,
++  VERIFY_ABORT_LED_OFF,
++  VERIFY_ABORT_LED_OFF_RECV,
++  VERIFY_ABORT_NUM_STATES,
++} ValidityVerifyAbortState;
++
+ /* List prints SSM states */
+ typedef enum {
+   LIST_GET_STORAGE = 0,
+@@ -318,6 +340,17 @@ struct _FpiDeviceValidity
+   guint    verify_capture_retries;
+   gboolean verify_recapture;
+ 
++  /* Verify/identify cancelled while capturing: the capture is stopped (and the LED
++   * turned off) before the action completes with the stored error, so the sensor
++   * is idle for the next open. */
++  gboolean verify_aborting;
++  GError  *verify_abort_error;
++
++  /* Same for a cancelled enrollment (capture stop, end of the on-chip enroll
++   * session, LED off). */
++  gboolean enroll_aborting;
++  GError  *enroll_abort_error;
++
+   /* Verify/identify mode flag: TRUE = identify, FALSE = verify */
+   gboolean identify_mode;
+ 
+@@ -447,6 +480,12 @@ void validity_list (FpDevice *device);
+ void validity_delete (FpDevice *device);
+ void validity_clear_storage (FpDevice *device);
+ 
++/* Local safety patch: persistent flash writes (pairing/provisioning, firmware
++ * extension upload, DB partition erase) are refused unless the environment
++ * variable LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES=1 is set. Enroll/verify and
++ * per-finger record writes are not affected. */
++gboolean validity_flash_writes_allowed (void);
++
+ /* Match correlation helpers (validity_verify.c) -- exposed for unit testing */
+ gboolean validity_print_matches_record (FpPrint                   *print,
+                                         const ValidityMatchResult *match,
+diff --git a/libfprint/drivers/validity/validity_data.c b/libfprint/drivers/validity/validity_data.c
+index f90fb26a..9b52af6b 100644
+--- a/libfprint/drivers/validity/validity_data.c
++++ b/libfprint/drivers/validity/validity_data.c
+@@ -26,6 +26,9 @@
+ 
+ #include <glib/gstdio.h>
+ #include <string.h>
++#include <stdlib.h>
++#include <sys/stat.h>
++#include <unistd.h>
+ 
+ /*
+  * Data-source isolation: the per-device blobs and shared keys are loaded from
+@@ -42,8 +45,64 @@ const gchar *validity_data_search_paths[] = {
+   "/usr/share/libfprint/validity",
+   "/usr/local/share/libfprint/validity",
+   NULL,
++  NULL,   /* spare slot for the optional private directory below */
+ };
+ 
++/* Local patch: LIBFPRINT_VALIDITY_DATA_DIR names an extra directory that is
++ * searched BEFORE the system paths. The default behaviour is unchanged when
++ * the variable is unset. To keep it safe for a privileged process the
++ * directory must be absolute, resolve (symlinks included) to a directory
++ * owned by the effective user and not writable by group/others, and the
++ * variable is ignored in setuid/setgid contexts (secure_getenv). The files
++ * are still HMAC-checked, but that key is public: this protects against
++ * corruption, not against a hostile directory, hence the ownership rules. */
++static void
++validity_data_apply_env_dir (void)
++{
++  static gboolean done = FALSE;
++  const char *env;
++  char *real;
++  struct stat st;
++
++  if (done)
++    return;
++  done = TRUE;
++
++  env = secure_getenv ("LIBFPRINT_VALIDITY_DATA_DIR");
++  if (env == NULL || env[0] == '\0')
++    return;
++
++  if (env[0] != '/')
++    {
++      fp_warn ("LIBFPRINT_VALIDITY_DATA_DIR must be an absolute path; ignored");
++      return;
++    }
++
++  real = realpath (env, NULL);
++  if (real == NULL || stat (real, &st) != 0 || !S_ISDIR (st.st_mode) ||
++      st.st_uid != geteuid () || (st.st_mode & (S_IWGRP | S_IWOTH)) != 0)
++    {
++      fp_warn ("LIBFPRINT_VALIDITY_DATA_DIR '%s' rejected (must be a directory "
++               "owned by the current user and not group/other-writable); ignored",
++               env);
++      free (real);
++      return;
++    }
++
++  /* Shift [sys, local, NULL] -> [private, sys, local, NULL] */
++  if (validity_data_search_paths[2] != NULL)
++    {
++      fp_warn ("validity data search path table is full; private dir ignored");
++      free (real);
++      return;
++    }
++  validity_data_search_paths[3] = NULL;
++  validity_data_search_paths[2] = validity_data_search_paths[1];
++  validity_data_search_paths[1] = validity_data_search_paths[0];
++  validity_data_search_paths[0] = real;   /* intentionally never freed */
++  fp_info ("Using private validity data directory %s", real);
++}
++
+ /* HMAC-SHA256 key for integrity verification.
+  * This is NOT secret — it is also compiled into the data package generator.
+  * Purpose: detect file corruption and casual tampering, not authentication.
+@@ -194,6 +253,8 @@ validity_data_load_device (ValidityDataStore *store,
+   g_autofree gchar *subdir = g_strdup_printf ("%04x_%04x", vid, pid);
+   g_autofree gchar *found_dir = NULL;
+ 
++  validity_data_apply_env_dir ();
++
+   g_return_val_if_fail (store != NULL, FALSE);
+ 
+   for (const gchar **base = validity_data_search_paths; *base != NULL; base++)
+@@ -254,6 +315,7 @@ gboolean
+ validity_data_load_common (ValidityDataStore *store,
+                            GError           **error)
+ {
++  validity_data_apply_env_dir ();
+   g_return_val_if_fail (store != NULL, FALSE);
+ 
+   for (gsize i = 0; i < G_N_ELEMENTS (common_file_map); i++)
+diff --git a/libfprint/drivers/validity/validity_enroll.c b/libfprint/drivers/validity/validity_enroll.c
+index 782bb20d..3e6b375a 100644
+--- a/libfprint/drivers/validity/validity_enroll.c
++++ b/libfprint/drivers/validity/validity_enroll.c
+@@ -1462,6 +1462,93 @@ enroll_reconnect_done (FpiDeviceValidity *self,
+                               fpi_device_error_new (FP_DEVICE_ERROR_REMOVED));
+ }
+ 
++/* Finish a failed enrollment (takes ownership of @error). */
++static void
++enroll_fail (FpiDeviceValidity *self,
++             GError            *error)
++{
++  FpDevice *dev = FP_DEVICE (self);
++
++  g_clear_pointer (&self->enroll_template, g_free);
++  self->enroll_template_len = 0;
++  g_clear_pointer (&self->bulk_data, g_free);
++  self->bulk_data_len = 0;
++
++  /* Recoverable mid-operation reset? Reconnect and restart enroll instead
++   * of failing the action (bounded; a true removal falls through). The
++   * on-chip enroll session is lost on reset, so this restarts from stage 0
++   * rather than resuming -- but the action does not fail. */
++  if (validity_recover_or_fail (self, error, enroll_reconnect_done, NULL))
++    {
++      g_error_free (error);
++      return;
++    }
++
++  fpi_device_enroll_complete (dev, NULL, validity_map_removed_error (error));
++}
++
++static void
++enroll_abort_run_state (FpiSsm   *ssm,
++                        FpDevice *dev)
++{
++  FpiDeviceValidity *self = FPI_DEVICE_VALIDITY (dev);
++
++  switch (fpi_ssm_get_cur_state (ssm))
++    {
++    case ENROLL_ABORT_STOP:
++      {
++        const guint8 cmd[] = { 0x04 };
++        vcsfw_tls_cmd_send (self, ssm, cmd, sizeof (cmd), NULL);
++      }
++      break;
++
++    case ENROLL_ABORT_END:
++      {
++        gsize cmd_len;
++        guint8 *cmd = validity_db_build_cmd_create_enrollment (FALSE, &cmd_len);
++        vcsfw_tls_cmd_send (self, ssm, cmd, cmd_len, NULL);
++        g_free (cmd);
++      }
++      break;
++
++    case ENROLL_ABORT_LED_OFF:
++      {
++        gsize cmd_len;
++        const guint8 *cmd = validity_capture_glow_end_cmd (&cmd_len);
++        vcsfw_tls_cmd_send (self, ssm, cmd, cmd_len, NULL);
++      }
++      break;
++
++    case ENROLL_ABORT_STOP_RECV:
++    case ENROLL_ABORT_END_RECV:
++      /* Best effort: the status does not matter. */
++      fpi_ssm_next_state (ssm);
++      break;
++
++    case ENROLL_ABORT_LED_OFF_RECV:
++      fpi_ssm_mark_completed (ssm);
++      break;
++    }
++}
++
++static void
++enroll_abort_done (FpiSsm   *ssm,
++                   FpDevice *dev,
++                   GError   *abort_error)
++{
++  FpiDeviceValidity *self = FPI_DEVICE_VALIDITY (dev);
++  GError *error = g_steal_pointer (&self->enroll_abort_error);
++
++  /* The cleanup is best effort; its own failure never replaces the real error. */
++  if (abort_error)
++    {
++      fp_dbg ("Enroll abort cleanup failed: %s", abort_error->message);
++      g_error_free (abort_error);
++    }
++  self->enroll_aborting = FALSE;
++  enroll_fail (self, error);
++}
++
+ static void
+ enroll_ssm_done (FpiSsm   *ssm,
+                  FpDevice *dev,
+@@ -1471,22 +1558,21 @@ enroll_ssm_done (FpiSsm   *ssm,
+ 
+   if (error)
+     {
+-      g_clear_pointer (&self->enroll_template, g_free);
+-      self->enroll_template_len = 0;
+-      g_clear_pointer (&self->bulk_data, g_free);
+-      self->bulk_data_len = 0;
+-
+-      /* Recoverable mid-operation reset? Reconnect and restart enroll instead
+-       * of failing the action (bounded; a true removal falls through). The
+-       * on-chip enroll session is lost on reset, so this restarts from stage 0
+-       * rather than resuming -- but the action does not fail. */
+-      if (validity_recover_or_fail (self, error, enroll_reconnect_done, NULL))
++      /* Cancelled mid-capture: leave the sensor idle (capture stopped, enroll
++       * session ended, LED off) before reporting the error. */
++      if (!self->enroll_aborting && self->tls.secure_tx &&
++          g_cancellable_is_cancelled (fpi_device_get_cancellable (dev)))
+         {
+-          g_error_free (error);
++          FpiSsm *abort_ssm;
++
++          self->enroll_aborting = TRUE;
++          self->enroll_abort_error = error;
++          abort_ssm = fpi_ssm_new (dev, enroll_abort_run_state, ENROLL_ABORT_NUM_STATES);
++          fpi_ssm_start (abort_ssm, enroll_abort_done);
+           return;
+         }
+ 
+-      fpi_device_enroll_complete (dev, NULL, validity_map_removed_error (error));
++      enroll_fail (self, error);
+       return;
+     }
+ 
+@@ -1588,6 +1674,9 @@ validity_enroll (FpDevice *device)
+       self->enroll_reported = 0;         /* and the reported progress */
+     }
+ 
++  self->enroll_aborting = FALSE;
++  g_clear_error (&self->enroll_abort_error);
++
+   ssm = fpi_ssm_new (device, enroll_run_state, ENROLL_NUM_STATES);
+   fpi_ssm_start (ssm, enroll_ssm_done);
+ }
+diff --git a/libfprint/drivers/validity/validity_fwext.c b/libfprint/drivers/validity/validity_fwext.c
+index 6f1d7cff..43fc8f5d 100644
+--- a/libfprint/drivers/validity/validity_fwext.c
++++ b/libfprint/drivers/validity/validity_fwext.c
+@@ -624,6 +624,13 @@ validity_fwext_upload_run_state (FpiSsm   *ssm,
+   switch (fpi_ssm_get_cur_state (ssm))
+     {
+     case FWEXT_SEND_WRITE_HW_REG:
++      if (!validity_flash_writes_allowed ())
++        {
++          fpi_ssm_mark_failed (ssm,
++                               fpi_device_error_new_msg (FP_DEVICE_ERROR_NOT_SUPPORTED,
++                                                         "Flash writes disabled"));
++          break;
++        }
+       {
+         guint8 cmd[10];
+         gsize cmd_len;
+diff --git a/libfprint/drivers/validity/validity_pair.c b/libfprint/drivers/validity/validity_pair.c
+index 7cd6be7f..5b8934b9 100644
+--- a/libfprint/drivers/validity/validity_pair.c
++++ b/libfprint/drivers/validity/validity_pair.c
+@@ -772,6 +772,17 @@ pair_apply_decision (FpiSsm            *ssm,
+       return;
+ 
+     case VALIDITY_PAIR_PROVISION:
++      if (!validity_flash_writes_allowed ())
++        {
++          pair_refuse (ssm, self,
++                       fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                                 "Sensor has no partitions and needs "
++                                                 "pairing, which erases and writes its "
++                                                 "flash. Refused: set "
++                                                 "LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES=1 "
++                                                 "to allow"));
++          return;
++        }
+       fp_info ("Flash has 0 partitions — device needs pairing");
+       break;
+ 
+@@ -905,6 +916,16 @@ pair_send_reset_blob (FpiSsm            *ssm,
+   gsize reset_len;
+   const guint8 *reset_data;
+ 
++  /* Defence in depth: fail closed before the first destructive command even
++   * if a future code path reaches this state without the decision gate. */
++  if (!validity_flash_writes_allowed ())
++    {
++      pair_refuse (ssm, self,
++                   fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                             "Flash writes disabled; reset_blob not sent"));
++      return;
++    }
++
+   /* Send reset_blob via raw USB (python-validity: usb.cmd(reset_blob)) */
+   reset_data = validity_data_get_bytes (&self->device_data,
+                                         VALIDITY_DATA_RESET, &reset_len);
+diff --git a/libfprint/drivers/validity/validity_tls.c b/libfprint/drivers/validity/validity_tls.c
+index f0b56091..f0754430 100644
+--- a/libfprint/drivers/validity/validity_tls.c
++++ b/libfprint/drivers/validity/validity_tls.c
+@@ -217,6 +217,17 @@ validity_tls_derive_psk_from_files (ValidityTlsState *tls,
+ 
+   g_autoptr(GError) error = NULL;
+ 
++  /* Local patch: a sensor paired by an unprivileged process (which cannot read
++   * the DMI serial and so used the fallback identity) must keep using that
++   * identity when a root service such as fprintd opens it later. Opt in with
++   * LIBFPRINT_VALIDITY_USE_FALLBACK_IDENTITY=1. */
++  if (g_strcmp0 (g_getenv ("LIBFPRINT_VALIDITY_USE_FALLBACK_IDENTITY"), "1") == 0)
++    {
++      fp_info ("Using the fallback identity \"VirtualBox\"/\"0\" as requested");
++      validity_tls_derive_psk_from_identity (tls, "VirtualBox", "0");
++      return;
++    }
++
+   /* python-validity reads both files in one try block and falls back
+    * for both if either read fails; do the same so that both derive the
+    * same key on the same machine. */
+diff --git a/libfprint/drivers/validity/validity_verify.c b/libfprint/drivers/validity/validity_verify.c
+index 157556a2..ceeb533e 100644
+--- a/libfprint/drivers/validity/validity_verify.c
++++ b/libfprint/drivers/validity/validity_verify.c
+@@ -856,6 +856,103 @@ verify_reconnect_done (FpiDeviceValidity *self,
+                                 fpi_device_error_new (FP_DEVICE_ERROR_REMOVED));
+ }
+ 
++/* Finish a failed verify/identify (takes ownership of @error). */
++static void
++verify_fail (FpiDeviceValidity *self,
++             GError            *error)
++{
++  FpDevice *dev = FP_DEVICE (self);
++
++  validity_verify_clear_match_state (self);
++
++  /* Recoverable mid-operation reset? Reconnect and retry instead of
++   * failing the action (bounded; a true removal falls through). */
++  if (validity_recover_or_fail (self, error, verify_reconnect_done,
++                                GINT_TO_POINTER (self->identify_mode)))
++    {
++      g_error_free (error);
++      return;
++    }
++
++  error = validity_map_removed_error (error);
++  if (self->identify_mode)
++    fpi_device_identify_complete (dev, error);
++  else
++    fpi_device_verify_complete (dev, error);
++}
++
++static void
++verify_abort_run_state (FpiSsm   *ssm,
++                        FpDevice *dev)
++{
++  FpiDeviceValidity *self = FPI_DEVICE_VALIDITY (dev);
++
++  switch (fpi_ssm_get_cur_state (ssm))
++    {
++    case VERIFY_ABORT_STOP:
++      {
++        const guint8 cmd[] = { 0x04 };
++        vcsfw_tls_cmd_send (self, ssm, cmd, sizeof (cmd), NULL);
++      }
++      break;
++
++    case VERIFY_ABORT_STOP_RECV:
++      /* Best effort: the status does not matter. */
++      fpi_ssm_next_state (ssm);
++      break;
++
++    case VERIFY_ABORT_MATCH_CLEANUP:
++      {
++        /* A cancel that lands after the match started (waiting for its result)
++         * leaves a match session open on the sensor; the next match_finger then
++         * fails with status 0x04fc. Same command as the normal VERIFY_CLEANUP;
++         * with no session open the sensor just answers with an error. */
++        gsize cmd_len;
++        guint8 *cmd = validity_pack_new (&cmd_len, "bw",
++                                         VCSFW_CMD_MATCH_CLEANUP,
++                                         (guint32) 0);
++        vcsfw_tls_cmd_send (self, ssm, cmd, cmd_len, NULL);
++        g_free (cmd);
++      }
++      break;
++
++    case VERIFY_ABORT_MATCH_CLEANUP_RECV:
++      /* Best effort: the status does not matter. */
++      fpi_ssm_next_state (ssm);
++      break;
++
++    case VERIFY_ABORT_LED_OFF:
++      {
++        gsize cmd_len;
++        const guint8 *cmd = validity_capture_glow_end_cmd (&cmd_len);
++        vcsfw_tls_cmd_send (self, ssm, cmd, cmd_len, NULL);
++      }
++      break;
++
++    case VERIFY_ABORT_LED_OFF_RECV:
++      fpi_ssm_mark_completed (ssm);
++      break;
++    }
++}
++
++static void
++verify_abort_done (FpiSsm   *ssm,
++                   FpDevice *dev,
++                   GError   *abort_error)
++{
++  FpiDeviceValidity *self = FPI_DEVICE_VALIDITY (dev);
++  GError *error = g_steal_pointer (&self->verify_abort_error);
++
++  /* The cleanup is best effort; its own failure never replaces the real error. */
++  if (abort_error)
++    {
++      fp_dbg ("Verify abort cleanup failed: %s", abort_error->message);
++      g_error_free (abort_error);
++    }
++  self->verify_aborting = FALSE;
++  verify_fail (self, error);
++}
++
+ static void
+ verify_ssm_done (FpiSsm   *ssm,
+                  FpDevice *dev,
+@@ -865,22 +962,23 @@ verify_ssm_done (FpiSsm   *ssm,
+ 
+   if (error)
+     {
+-      validity_verify_clear_match_state (self);
+-
+-      /* Recoverable mid-operation reset? Reconnect and retry instead of
+-       * failing the action (bounded; a true removal falls through). */
+-      if (validity_recover_or_fail (self, error, verify_reconnect_done,
+-                                    GINT_TO_POINTER (self->identify_mode)))
++      /* Cancelled while waiting for the finger (the screen was unlocked another
++       * way, or the client went away): the sensor is still capturing with its LED
++       * on, and the next open would fail calibration with status 0x0450. Stop the
++       * capture first, then finish with the original error. */
++      if (!self->verify_aborting && self->tls.secure_tx &&
++          g_cancellable_is_cancelled (fpi_device_get_cancellable (dev)))
+         {
+-          g_error_free (error);
++          FpiSsm *abort_ssm;
++
++          self->verify_aborting = TRUE;
++          self->verify_abort_error = error;
++          abort_ssm = fpi_ssm_new (dev, verify_abort_run_state, VERIFY_ABORT_NUM_STATES);
++          fpi_ssm_start (abort_ssm, verify_abort_done);
+           return;
+         }
+ 
+-      error = validity_map_removed_error (error);
+-      if (self->identify_mode)
+-        fpi_device_identify_complete (dev, error);
+-      else
+-        fpi_device_verify_complete (dev, error);
++      verify_fail (self, error);
+       return;
+     }
+ 
+@@ -1046,6 +1144,8 @@ validity_verify (FpDevice *device)
+     }
+ 
+   self->identify_mode = FALSE;
++  self->verify_aborting = FALSE;
++  g_clear_error (&self->verify_abort_error);
+   if (self->recovery_redispatch)
+     self->recovery_redispatch = FALSE;   /* internal retry -- keep the budget */
+   else
+@@ -1070,6 +1170,8 @@ validity_identify (FpDevice *device)
+     }
+ 
+   self->identify_mode = TRUE;
++  self->verify_aborting = FALSE;
++  g_clear_error (&self->verify_abort_error);
+   if (self->recovery_redispatch)
+     self->recovery_redispatch = FALSE;
+   else
+@@ -1729,7 +1831,7 @@ delete_ssm_done (FpiSsm   *ssm,
+    * never compacts, so the flash stays occupied. When we just deleted the last
+    * print, erase the partition to reclaim it (same erase as clear_storage) so
+    * the user-facing "remove all prints" flow actually frees space. */
+-  if (!error && self->delete_reclaim)
++  if (!error && self->delete_reclaim && validity_flash_writes_allowed ())
+     {
+       FpiSsm *erase;
+ 
+@@ -1793,6 +1895,13 @@ clear_run_state (FpiSsm   *ssm,
+   switch (fpi_ssm_get_cur_state (ssm))
+     {
+     case CLEAR_DB_WRITE_ENABLE:
++      if (!validity_flash_writes_allowed ())
++        {
++          fpi_ssm_mark_failed (ssm,
++                               fpi_device_error_new_msg (FP_DEVICE_ERROR_NOT_SUPPORTED,
++                                                         "Flash writes disabled"));
++          break;
++        }
+       {
+         gsize blob_len;
+         const guint8 *blob = validity_db_get_write_enable_blob (self, &blob_len);
+@@ -1880,6 +1989,15 @@ validity_clear_storage (FpDevice *device)
+       return;
+     }
+ 
++  if (!validity_flash_writes_allowed ())
++    {
++      fp_warn ("clear_storage refused: flash writes disabled "
++               "(set LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES=1 to allow)");
++      fpi_device_clear_storage_complete (device,
++                                         fpi_device_error_new (FP_DEVICE_ERROR_NOT_SUPPORTED));
++      return;
++    }
++
+   ssm = fpi_ssm_new (device, clear_run_state, CLEAR_NUM_STATES);
+   fpi_ssm_start (ssm, clear_ssm_done);
+ }
+diff --git a/tests/test-validity.c b/tests/test-validity.c
+index 169690c8..7abf9576 100644
+--- a/tests/test-validity.c
++++ b/tests/test-validity.c
+@@ -6773,6 +6773,20 @@ test_data_load_device_corrupt (void)
+  * Main
+  * ================================================================ */
+ 
++static void
++test_flash_writes_fail_closed (void)
++{
++  g_unsetenv ("LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES");
++  g_assert_false (validity_flash_writes_allowed ());
++  g_setenv ("LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES", "", TRUE);
++  g_assert_false (validity_flash_writes_allowed ());
++  g_setenv ("LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES", "true", TRUE);
++  g_assert_false (validity_flash_writes_allowed ());
++  g_setenv ("LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES", "1", TRUE);
++  g_assert_true (validity_flash_writes_allowed ());
++  g_unsetenv ("LIBFPRINT_VALIDITY_ALLOW_FLASH_WRITES");
++}
++
+ int
+ main (int argc, char *argv[])
+ {
+@@ -7245,5 +7259,8 @@ main (int argc, char *argv[])
+                    test_data_load_device_corrupt);
+ 
+ 
++  g_test_add_func ("/validity/safety/flash-writes-fail-closed",
++                   test_flash_writes_fail_closed);
++
+   return g_test_run ();
+ }
